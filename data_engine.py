@@ -466,19 +466,19 @@ class MineEnvironmentSimulator:
 
                 node.load_kN = round(node.base_load_kN + node.load_delta_kN, 1)
 
-            # ----- HARDWARE INJECTION -----
-            if nid == "S-103" and bridge.latest_data is not None:
+            # ----- HARDWARE INJECTION (Wi-Fi AP or USB Serial) -----
+            if nid == "S-103" and bridge.is_active and bridge.latest_data is not None:
                 hw = bridge.latest_data
                 
                 # Math for Pitch & Roll from accelerometer (m/s2)
-                ax = hw["accelX"] / 9.81
-                ay = hw["accelY"] / 9.81
-                az = hw["accelZ"] / 9.81
+                ax = hw.get("accelX", 0.0) / 9.81
+                ay = hw.get("accelY", 0.0) / 9.81
+                az = hw.get("accelZ", 9.81) / 9.81
                 
                 try:
                     p = math.degrees(math.atan2(ay, math.sqrt(ax**2 + az**2)))
                     r = math.degrees(math.atan2(-ax, az))
-                except:
+                except Exception:
                     p, r = 0, 0
                 
                 # Override Node S-103
@@ -486,19 +486,38 @@ class MineEnvironmentSimulator:
                 node.roll_deg = r
                 
                 # Rough vibration estimate from gyro
-                vib = (abs(hw["gyroX"]) + abs(hw["gyroY"]) + abs(hw["gyroZ"])) * 0.5
+                gx = hw.get("gyroX", 0.0)
+                gy = hw.get("gyroY", 0.0)
+                gz = hw.get("gyroZ", 0.0)
+                vib = (abs(gx) + abs(gy) + abs(gz)) * 0.5
                 node.vibration_rms_g = float(np.clip(vib, 0.0, 2.0))
                 node.vibration_peak_g = node.vibration_rms_g * 1.5
                 
-                node.temp_c = hw["tempC"]
+                # Temperature from DHT22 or MPU
+                if hw.get("dhtTemp") is not None:
+                    node.temp_c = float(hw["dhtTemp"])
+                elif "tempC" in hw:
+                    node.temp_c = float(hw["tempC"])
                 
-                # Use ToF distance directly for displacement (scaled to fit dashboard ranges nicely)
-                node.displacement_mm = float(hw["distanceMM"]) / 10.0
+                # Humidity from DHT22
+                if hw.get("humidity") is not None:
+                    node.humidity_pct = float(hw["humidity"])
+
+                # MQ-2 Methane / Combustible Gas
+                if hw.get("mq2Raw") is not None:
+                    # Scale 0-4095 ADC to PPM range (0-5000 ppm)
+                    node.methane_ppm = float(hw["mq2Raw"]) * (5000.0 / 4095.0)
+
+                # Use ToF distance directly for displacement (scaled nicely)
+                if hw.get("distanceMM", -1) > 0:
+                    node.displacement_mm = float(hw["distanceMM"]) / 10.0
                 
-                # Load Cell (g to kN approximation for demo)
-                node.load_kN = float(hw["loadWeight"]) / 1000.0 * 9.81
-                node.rssi_dbm = hw.get("rssi", -65)
-            # ------------------------------
+                # Load Cell (g to kN approximation for mining prop baseline)
+                if "loadWeight" in hw and hw["loadWeight"] is not None:
+                    node.load_kN = round(node.base_load_kN + (float(hw["loadWeight"]) / 1000.0 * 9.81), 1)
+
+                node.rssi_dbm = hw.get("rssi", -50 if hw.get("source") == "WIFI_AP" else -65)
+            # -------------------------------------------------------
 
             node.tilt_magnitude_deg = round(math.sqrt(node.pitch_deg**2 + node.roll_deg**2), 3)
             node.pitch_deg = round(node.pitch_deg, 3)

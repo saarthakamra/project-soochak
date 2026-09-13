@@ -668,38 +668,69 @@ st.markdown("""
 
 # Clean, modern hardware bridge in an unobtrusive expander
 ports = get_available_ports()
-hw_active = bridge.running and bridge.latest_data is not None
+hw_active = bridge.is_active
 
-with st.expander("🔌 Hardware Serial Port Bridge (ESP32 Node S-103) & Link Settings", expanded=False):
-    h_col1, h_col2, h_col3 = st.columns([2, 1.2, 1.8])
-    with h_col1:
-        sel_port = st.selectbox(
-            "Serial Device Port",
-            ports if ports else ["No Ports Found"],
-            key="hw_port_selector",
-        )
-    with h_col2:
-        st.write("")
-        st.write("")
-        if not bridge.running:
-            if st.button("🔌 Connect ESP32", use_container_width=True, key="hw_conn_btn"):
-                if sel_port and sel_port != "No Ports Found":
-                    ok, msg = bridge.connect(sel_port)
-                    if not ok: st.error(msg)
-                    else: st.rerun()
+with st.expander("📡 Live Sensor Node Bridge: Wi-Fi AP Mode (SOOCHAK_NODE) & USB Serial", expanded=hw_active):
+    w_col1, w_col2 = st.columns([1.6, 1.4])
+    
+    with w_col1:
+        st.markdown("##### 📶 Wi-Fi Access Point Ingestion (`SOOCHAK_NODE`)")
+        if hw_active and bridge.connection_type == "WIFI_AP":
+            last_sec = round(time.time() - bridge.last_packet_time, 1)
+            raw_hw = bridge.latest_data or {}
+            st.markdown(f"""<div style="background:rgba(16, 185, 129, 0.12); border:1px solid rgba(16, 185, 129, 0.35); border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+<div style="display:flex; justify-content:space-between; align-items:center;">
+<span class="card-pill pill-crit" style="font-size:0.72rem;"><span class="pulse-circle"></span>LIVE WI-FI STREAM ACTIVE</span>
+<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#34d399;">Packets: #{bridge.packet_count} (Last: {last_sec}s ago)</span>
+</div>
+<div style="font-size:0.80rem; color:#cbd5e1; margin-top:6px;">
+Connected via <b>SOOCHAK_NODE</b> (192.168.4.1 ➔ Laptop :3000). Overriding Node <b>S-103</b> in real-time.
+</div>
+<div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#94a3b8;">
+<div>ToF Dist: <b style="color:#f8fafc;">{raw_hw.get('distanceMM', 0)} mm</b></div>
+<div>Load: <b style="color:#f8fafc;">{raw_hw.get('loadWeight', 0.0):.1f} g</b></div>
+<div>MQ-2: <b style="color:{'#f87171' if raw_hw.get('gasAlarm') else '#34d399'};">{raw_hw.get('mq2Raw', 0)} ({'ALARM' if raw_hw.get('gasAlarm') else 'OK'})</b></div>
+<div>DHT Temp: <b style="color:#f8fafc;">{raw_hw.get('dhtTemp') or raw_hw.get('tempC', 0.0)}°C</b></div>
+<div>Humidity: <b style="color:#f8fafc;">{raw_hw.get('humidity') or '--'}%</b></div>
+<div>Accel Z: <b style="color:#f8fafc;">{raw_hw.get('accelZ', 9.81):.2f}</b></div>
+</div>
+</div>""", unsafe_allow_html=True)
         else:
-            if st.button("⏹️ Disconnect", use_container_width=True, key="hw_disconn_btn"):
-                bridge.disconnect()
-                st.rerun()
-    with h_col3:
-        st.write("")
-        st.write("")
+            st.markdown("""<div style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:10px; padding:12px 14px; font-size:0.82rem; color:#cbd5e1;">
+<div style="font-weight:700; color:#38bdf8; margin-bottom:4px;">📡 Automatic Wi-Fi AP Ingestion Ready (Port 3000)</div>
+<div>1. On your laptop, connect to Wi-Fi SSID: <b>SOOCHAK_NODE</b> (Password: <code>soochak123</code>).</div>
+<div>2. Your laptop receives IP <b>192.168.4.2</b>.</div>
+<div>3. Your ESP32 automatically POSTs telemetry to <code>http://192.168.4.2:3000/api/sensors</code>.</div>
+<div style="color:#94a3b8; font-size:0.74rem; margin-top:4px;">Listener active on <code>0.0.0.0:3000/api/sensors</code>. Telemetry automatically synchronizes with Node S-103.</div>
+</div>""", unsafe_allow_html=True)
+
+    with w_col2:
+        st.markdown("##### 🔌 USB Serial Cable Fallback")
+        s_c1, s_c2 = st.columns([1.8, 1.2])
+        with s_c1:
+            sel_port = st.selectbox(
+                "Serial Device Port",
+                ports if ports else ["No Ports Found"],
+                key="hw_port_selector",
+                label_visibility="collapsed",
+            )
+        with s_c2:
+            if not (bridge.running and bridge.connection_type == "SERIAL"):
+                if st.button("🔌 Connect", use_container_width=True, key="hw_conn_btn"):
+                    if sel_port and sel_port != "No Ports Found":
+                        ok, msg = bridge.connect(sel_port)
+                        if not ok: st.error(msg)
+                        else: st.rerun()
+            else:
+                if st.button("⏹️ Disconnect", use_container_width=True, key="hw_disconn_btn"):
+                    bridge.disconnect()
+                    st.rerun()
+
         if hw_active:
-            st.markdown(f'<span class="card-pill pill-crit"><span class="pulse-circle"></span>LIVE ESP32 S-103 ON {bridge.port}</span>', unsafe_allow_html=True)
-        elif bridge.running:
-            st.markdown(f'<span class="card-pill pill-info"><span class="pulse-circle"></span>LISTENING ON {bridge.port}</span>', unsafe_allow_html=True)
+            src_lbl = f"Wi-Fi AP (SOOCHAK_NODE)" if bridge.connection_type == "WIFI_AP" else f"Serial ({bridge.port})"
+            st.markdown(f'<div style="margin-top:6px;"><span class="card-pill pill-crit"><span class="pulse-circle"></span>LIVE NODE S-103: {src_lbl}</span></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<span class="card-pill pill-safe"><span class="pulse-circle"></span>SYNTHETIC GEOTECHNICAL SIMULATION ACTIVE</span>', unsafe_allow_html=True)
+            st.markdown('<div style="margin-top:6px;"><span class="card-pill pill-safe"><span class="pulse-circle"></span>SYNTHETIC SIMULATION ACTIVE</span></div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 6. 1-CLICK PILL SCENARIO SWITCHER (AeroLinkTree Signature Style)
@@ -984,7 +1015,11 @@ with tab_operations:
         h_tier, h_tier_label, h_color = health_tier(h_score)
         is_node_hw = sn["node_id"] == "S-103" and hw_active
 
-        hw_tag = '<span class="card-pill pill-crit" style="font-size:0.65rem; margin-left:6px;"><span class="pulse-circle"></span>LIVE ESP32</span>' if is_node_hw else '<span class="card-pill pill-safe" style="font-size:0.65rem; margin-left:6px;">SIMULATED</span>'
+        if is_node_hw:
+            src_str = "Wi-Fi AP: SOOCHAK_NODE" if bridge.connection_type == "WIFI_AP" else f"Serial: {bridge.port}"
+            hw_tag = f'<span class="card-pill pill-crit" style="font-size:0.65rem; margin-left:6px;"><span class="pulse-circle"></span>LIVE {src_str}</span>'
+        else:
+            hw_tag = '<span class="card-pill pill-safe" style="font-size:0.65rem; margin-left:6px;">SIMULATED</span>'
 
         # Match node index to InSAR
         insar_node_list = insar_forecast.get("nodes", [])
@@ -994,6 +1029,10 @@ with tab_operations:
         node_12h_risk = float(insar_risk_list[insar_idx]) if insar_risk_list else 0.12
         insar_meta = insar_node_list[insar_idx] if len(insar_node_list) > insar_idx else {}
         insar_velocity = insar_meta.get("velocity_mmyr", -14.5)
+
+        gas_alarm_badge = ""
+        if is_node_hw and bridge.latest_data and bridge.latest_data.get("gasAlarm"):
+            gas_alarm_badge = ' <span style="color:#f87171; font-weight:800;">[🚨 GAS ALARM]</span>'
 
         st.markdown(f"""<div class="detail-card">
 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
@@ -1011,10 +1050,11 @@ with tab_operations:
 <div class="detail-row"><span class="detail-label">GPS Coordinates</span><span class="detail-value">{sn['lat']:.4f}° N, {sn['lon']:.4f}° E</span></div>
 <div class="detail-row"><span class="detail-label">AI Threat Status</span><span class="detail-value">{sn['status']} (ML: {sn['anomaly_score']:.3f})</span></div>
 <div class="detail-row"><span class="detail-label">MPU6050 Tilt</span><span class="detail-value">{sn['tilt_magnitude_deg']}° (P:{sn['pitch_deg']}° R:{sn['roll_deg']}°)</span></div>
-<div class="detail-row"><span class="detail-label">VL53L1X Displacement</span><span class="detail-value">{sn['displacement_mm']:.2f} mm ({sn['displacement_rate_mm_min']:+.2f} mm/min)</span></div>
+<div class="detail-row"><span class="detail-label">VL53L0X / VL53L1X Crack Sag</span><span class="detail-value">{sn['displacement_mm']:.2f} mm ({sn['displacement_rate_mm_min']:+.2f} mm/min)</span></div>
 <div class="detail-row"><span class="detail-label">Vibration Acceleration</span><span class="detail-value">RMS: {sn['vibration_rms_g']}g | Peak: {sn['vibration_peak_g']}g</span></div>
 <div class="detail-row"><span class="detail-label">Prop Load (HX711)</span><span class="detail-value">{sn['load_kN']:.1f} kN (Δ {sn['load_delta_kN']:+.1f} kN)</span></div>
-<div class="detail-row"><span class="detail-label">Underground CH₄ Gas</span><span class="detail-value">{sn['methane_ppm']:.0f} ppm (Permissible &lt;5000)</span></div>
+<div class="detail-row"><span class="detail-label">DHT22 Ambient Temp & Humidity</span><span class="detail-value">{sn['temp_c']:.1f}°C | {sn.get('humidity_pct', 65.0):.1f}% RH</span></div>
+<div class="detail-row"><span class="detail-label">MQ-2 Combustible Gas</span><span class="detail-value">{sn['methane_ppm']:.0f} ppm{gas_alarm_badge}</span></div>
 <div class="detail-row"><span class="detail-label">InSAR Satellite Velocity</span><span class="detail-value" style="color:#38bdf8;">{insar_velocity:.1f} mm/yr</span></div>
 <div class="detail-row"><span class="detail-label">12h Subsidence Risk</span><span class="detail-value" style="color:{'#f87171' if node_12h_risk > 0.65 else '#34d399'};">{node_12h_risk*100:.1f}%</span></div>
 <div class="detail-row" style="border-bottom: none;"><span class="detail-label">Last Telemetry</span><span class="detail-value">{sn['last_updated']}</span></div>
