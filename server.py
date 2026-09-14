@@ -83,11 +83,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         except Exception:
             req = {}
 
-        if self.path in ['/api/sensors', '/api/sensors/', '/api/telemetry']:
-            bridge.on_wifi_data(req)
-            self._send_json({"status": "ok", "received_packet": req.get("packet", bridge.packet_count)})
-
-        elif self.path == '/api/connect':
+        if self.path == '/api/connect':
             port = req.get('port')
             if port:
                 success, msg = bridge.connect(port)

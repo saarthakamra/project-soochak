@@ -516,7 +516,7 @@ class MineEnvironmentSimulator:
                 if "loadWeight" in hw and hw["loadWeight"] is not None:
                     node.load_kN = round(node.base_load_kN + (float(hw["loadWeight"]) / 1000.0 * 9.81), 1)
 
-                node.rssi_dbm = hw.get("rssi", -50 if hw.get("source") == "WIFI_AP" else -65)
+                node.rssi_dbm = hw.get("rssi", -65)
             # -------------------------------------------------------
 
             node.tilt_magnitude_deg = round(math.sqrt(node.pitch_deg**2 + node.roll_deg**2), 3)
